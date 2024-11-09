@@ -1,0 +1,16 @@
+[package]
+name = "solitaire_cli_rs"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+#solitaire_base = { git = "https://github.com/Jiawens/solitaire_base.git" }
+solitaire_base = { path = "../solitaire_base" }
+solitaire_solver_rs = { path = "../solitaire_solver_rs" }
+num-ordinal = "0.2.0"
+futures = "0.3.31"
+tokio = { version = "1.41.0", features = ["macros", "rt", "rt-multi-thread", "time"] }
+ratatui = "0.29.0"
+crossterm = { version = "0.28.1", features = ["event-stream"] }
