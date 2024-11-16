@@ -58,9 +58,9 @@ impl StatefulWidget for Board {
 
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) { //TODO use the area parameter
         assert!(area.width >= 25);
-        
+
         let (sx, sy) = (area.x, area.y);
-        
+
         let card_style_normal = Style::reset();
         let card_style_semi_selected = Style::reset().on_gray();
         let card_style_selected = Style::reset().white().on_black();
@@ -202,9 +202,13 @@ async fn main() -> std::io::Result<()>{
     loop {
         tokio::select! {
             _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {
-                terminal.draw(|frame|
-                    frame.render_stateful_widget(board.clone(), Rect::new(0, 0, 25, 80), &mut board_state)
-                )?;
+                terminal.draw(|frame| {
+                    let vertical_layout = Layout::vertical([Constraint::Min(0), Constraint::Length(1)]);
+                    let [board_area, status_line] = vertical_layout.areas(Rect::new(0, 0, 25, 17));
+                    frame.render_stateful_widget(board.clone(), board_area, &mut board_state);
+                    //TODO Status line at bottom
+                    frame.render_widget(Line::from("<PLACEHOLDER>").on_red(), status_line);
+                })?;
             }
             Some(Ok(event)) = event_stream.next().fuse() => {
                 let key;
