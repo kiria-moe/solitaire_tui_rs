@@ -56,7 +56,7 @@ impl Board {
 impl StatefulWidget for Board {
     type State = BoardState;
 
-    fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) { //TODO use the area parameter
+    fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
         assert!(area.width >= 25);
 
         let (sx, sy) = (area.x, area.y);
