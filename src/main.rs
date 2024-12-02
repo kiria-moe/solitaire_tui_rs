@@ -103,7 +103,8 @@ impl StatefulWidget for Board {
     }
 }
 
-fn change_board_state(board: &mut Board, state: &mut BoardState, key: KeyCode) {
+fn change_board_state(board: &mut Board, state: &mut BoardState, info: &mut Option<String>, key: KeyCode) {
+    if info.is_some() { *info = None; }
     match state {
         BoardState::View => {
             match key {
@@ -134,6 +135,8 @@ fn change_board_state(board: &mut Board, state: &mut BoardState, key: KeyCode) {
                 };
                 if board.board.move_cards(solitaire_base::move_action::MoveAction::CollectDragon(color)) {
                     *state = BoardState::View;
+                } else {
+                    *info = Some("Cannot collect dragon".to_string());
                 }
             }
         }
@@ -145,7 +148,10 @@ fn change_board_state(board: &mut Board, state: &mut BoardState, key: KeyCode) {
                     if n == 0 || n as usize > board.board.len(SolitaireSlot::Tray(*index)) { return; }
                     for i in n as usize..board.board.len(SolitaireSlot::Tray(*index)) {
                         if !board.board[SolitaireLocation::Tray(*index, i as u8)]
-                            .can_stack_onto(&board.board[SolitaireLocation::Tray(*index, i as u8 - 1)]) { return; }
+                            .can_stack_onto(&board.board[SolitaireLocation::Tray(*index, i as u8 - 1)]) {
+                            *info = Some("Not a valid stack".into());
+                            return;
+                        }
                     }
                     *state = BoardState::Pickup(SolitaireLocation::Tray(*index, n as u8));
                 }
@@ -161,7 +167,10 @@ fn change_board_state(board: &mut Board, state: &mut BoardState, key: KeyCode) {
                     SolitaireLocation::Tray(x, y) => SolitaireLocation::Tray(*x, *y - 1),
                 }).unwrap();
                 //Check if the move is valid
-                if !board.board.appendable(target_slot, source_card) { panic!(); }
+                if !board.board.appendable(target_slot, source_card) {
+                    *info = Some("Cannot stack onto that".to_string());
+                    return;
+                }
                 //Move the card(delete from source and add to target)
                 let cards = match location {
                     SolitaireLocation::Spare(index) => vec![board.board.pop(SolitaireSlot::Spare(*index)).unwrap()],
@@ -198,6 +207,7 @@ async fn main() -> std::io::Result<()>{
 
     let mut board = Board::new();
     let mut board_state = BoardState::View;
+    let mut info = None::<String>;
 
     loop {
         tokio::select! {
@@ -207,7 +217,11 @@ async fn main() -> std::io::Result<()>{
                     let [board_area, status_line] = vertical_layout.areas(Rect::new(0, 0, 25, 17));
                     frame.render_stateful_widget(board.clone(), board_area, &mut board_state);
                     //TODO Status line at bottom
-                    frame.render_widget(Line::from("<PLACEHOLDER>").on_red(), status_line);
+                    if let Some(info) = &info {
+                        frame.render_widget(Line::from(info.clone()).on_red(), status_line);
+                    } else {
+                        frame.render_widget(Line::from("<PLACEHOLDER>"), status_line);
+                    }
                 })?;
             }
             Some(Ok(event)) = event_stream.next().fuse() => {
@@ -218,7 +232,7 @@ async fn main() -> std::io::Result<()>{
                 } else if key == KeyCode::Char('n').into() {
                     board = Board::new();
                 } else {
-                    change_board_state(&mut board, &mut board_state, key.code);
+                    change_board_state(&mut board, &mut board_state, &mut info, key.code);
                 }
             },
         }
