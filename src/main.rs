@@ -66,17 +66,36 @@ impl StatefulWidget for Board {
         let card_style_selected = Style::reset().white().on_black();
         let card_style_flower = Style::reset().red();
 
+        trait Colorize {
+            fn colorize(&self, card: solitaire_base::card::Card) -> Style;
+        }
+
+        impl Colorize for Style {
+            fn colorize(&self, card: solitaire_base::card::Card) -> Style {
+                match card {
+                    solitaire_base::card::Card::Number(solitaire_base::card::NumberCard::Bamboo, _) => self.green(),
+                    solitaire_base::card::Card::Number(solitaire_base::card::NumberCard::Characters, _) => self.black(),
+                    solitaire_base::card::Card::Number(solitaire_base::card::NumberCard::Coin, _) => self.red(),
+                    solitaire_base::card::Card::Dragon(solitaire_base::card::DragonCard::Green) => self.green(),
+                    solitaire_base::card::Card::Dragon(solitaire_base::card::DragonCard::White) => self.black(),
+                    solitaire_base::card::Card::Dragon(solitaire_base::card::DragonCard::Red) => self.red(),
+                    solitaire_base::card::Card::Flower => self.magenta(),
+                }
+            }
+        }
+
         //Top Line
         buf.set_string(sx, sy, "+--+--+--+-----+--+--+--+", Style::reset());
         //Spares
         (0..3).for_each(|i| {
             buf.set_string(sx + i * 3, sy + 1, "|", card_style_normal);
             buf.set_string(sx + i * 3 + 1, sy + 1,
-                           format!("{}", self.board.spare[i as usize]),
-                           if let BoardState::Pickup(SolitaireLocation::Spare(n)) = state {
-                               if *n == i as u8 { card_style_selected } else { card_style_normal }
-                           } else if let BoardState::CollectDragon = state { card_style_semi_selected }
-                           else { card_style_normal });
+                            format!("{}", self.board.spare[i as usize]),
+                            match state {
+                                BoardState::Pickup(SolitaireLocation::Spare(n)) if *n == i as u8 => card_style_selected,
+                                BoardState::CollectDragon => card_style_semi_selected,
+                                _ => if let Some(card) = self.board.get(SolitaireLocation::Spare(i as u8)) { card_style_normal.colorize(card) } else { card_style_normal },
+                            });
         });
         //Flower
         buf.set_string(sx + 9, sy + 1, "| ", card_style_normal);
@@ -92,11 +111,10 @@ impl StatefulWidget for Board {
                 buf.set_string(sx + j as u16 * 3, sy + 3 + i as u16, " ", card_style_normal);
                 buf.set_string(sx + j as u16 * 3 + 1, sy + 3 + i as u16,
                                if let Some(c) = stack.get(i) { Cow::Owned(format!("{c}")) } else { Cow::Borrowed("  ") },
-                               if stack.get(i).is_some() { match state {
-                                   BoardState::View => card_style_normal,
+                               if let Some(card) = stack.get(i) { match state {
                                    BoardState::SemiPickup(n) if *n == j as u8 => { card_style_semi_selected }
                                    BoardState::Pickup(SolitaireLocation::Tray(n, m)) if *n == j as u8 && i + 2 > *m as usize => { card_style_selected }
-                                   _ => card_style_normal
+                                   _ => card_style_normal.colorize(*card)
                                }} else { card_style_normal })
             }
         }
