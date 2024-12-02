@@ -211,13 +211,15 @@ fn change_board_state(board: &mut Board, state: &mut BoardState, info: &mut Opti
 fn draw(frame: &mut Frame, board: &Board, board_state: &mut BoardState, info: &Option<String>) {
     let vertical_layout = Layout::vertical([Constraint::Min(0), Constraint::Length(1)]);
     let [board_area, status_line] = vertical_layout.areas(Rect::new(0, 0, 25, 17));
+    
     frame.render_stateful_widget(board.clone(), board_area, board_state);
-    //TODO Status line at bottom
-    if let Some(info) = info {
-        frame.render_widget(Line::from(info.clone()).on_red(), status_line);
+    
+    frame.render_widget(if let Some(info) = info {
+        Line::from(info.clone()).on_red()
     } else {
-        frame.render_widget(Line::from("<PLACEHOLDER>"), status_line);
-    }
+        let cards = solitaire_base::index::ALL_SLOTS.iter().map(|slot| board.board.len(*slot)).sum::<usize>();
+        Line::from(if cards == 0 { Cow::Borrowed("Congratulations!") } else { Cow::Owned(format!("{cards}/40 cards left")) }).right_aligned().on_gray()
+    }, status_line);
 }
 
 #[tokio::main]
