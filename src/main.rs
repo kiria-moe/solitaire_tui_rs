@@ -190,6 +190,18 @@ fn change_board_state(board: &mut Board, state: &mut BoardState, info: &mut Opti
     }
 }
 
+fn draw(frame: &mut Frame, board: &Board, board_state: &mut BoardState, info: &Option<String>) {
+    let vertical_layout = Layout::vertical([Constraint::Min(0), Constraint::Length(1)]);
+    let [board_area, status_line] = vertical_layout.areas(Rect::new(0, 0, 25, 17));
+    frame.render_stateful_widget(board.clone(), board_area, board_state);
+    //TODO Status line at bottom
+    if let Some(info) = info {
+        frame.render_widget(Line::from(info.clone()).on_red(), status_line);
+    } else {
+        frame.render_widget(Line::from("<PLACEHOLDER>"), status_line);
+    }
+}
+
 #[tokio::main]
 async fn main() -> std::io::Result<()>{
     enable_raw_mode()?;
@@ -213,15 +225,7 @@ async fn main() -> std::io::Result<()>{
         tokio::select! {
             _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {
                 terminal.draw(|frame| {
-                    let vertical_layout = Layout::vertical([Constraint::Min(0), Constraint::Length(1)]);
-                    let [board_area, status_line] = vertical_layout.areas(Rect::new(0, 0, 25, 17));
-                    frame.render_stateful_widget(board.clone(), board_area, &mut board_state);
-                    //TODO Status line at bottom
-                    if let Some(info) = &info {
-                        frame.render_widget(Line::from(info.clone()).on_red(), status_line);
-                    } else {
-                        frame.render_widget(Line::from("<PLACEHOLDER>"), status_line);
-                    }
+                    draw(frame, &board, &mut board_state, &info);
                 })?;
             }
             Some(Ok(event)) = event_stream.next().fuse() => {
@@ -234,6 +238,9 @@ async fn main() -> std::io::Result<()>{
                 } else {
                     change_board_state(&mut board, &mut board_state, &mut info, key.code);
                 }
+                terminal.draw(|frame| {
+                    draw(frame, &board, &mut board_state, &info);
+                })?;
             },
         }
     }
