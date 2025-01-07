@@ -67,11 +67,11 @@ impl StatefulWidget for Board {
         let card_style_flower = Style::reset().red();
 
         trait Colorize {
-            fn colorize(&self, card: solitaire_base::card::Card) -> Style;
+            fn colorize(&self, card: &solitaire_base::card::Card) -> Style;
         }
 
         impl Colorize for Style {
-            fn colorize(&self, card: solitaire_base::card::Card) -> Style {
+            fn colorize(&self, card: &solitaire_base::card::Card) -> Style {
                 match card {
                     solitaire_base::card::Card::Number(solitaire_base::card::NumberCard::Bamboo, _) => self.green(),
                     solitaire_base::card::Card::Number(solitaire_base::card::NumberCard::Characters, _) => self.black(),
@@ -90,31 +90,36 @@ impl StatefulWidget for Board {
         (0..3).for_each(|i| {
             buf.set_string(sx + i * 3, sy + 1, "|", card_style_normal);
             buf.set_string(sx + i * 3 + 1, sy + 1,
-                            format!("{}", self.board.spare[i as usize]),
+                            match self.board.get(SolitaireSlot::Spare(i as u8)).next() {
+                                Some(card) => Cow::Owned(format!("{card}")),
+                                None if self.board.is_spare_collected(i as u8) => Cow::Borrowed("CO"),
+                                None => Cow::Borrowed("  "),
+                            },
                             match state {
                                 BoardState::Pickup(SolitaireLocation::Spare(n)) if *n == i as u8 => card_style_selected,
                                 BoardState::CollectDragon => card_style_semi_selected,
-                                _ => if let Some(card) = self.board.get(SolitaireLocation::Spare(i as u8)) { card_style_normal.colorize(card) } else { card_style_normal },
+                                _ => if let Some(card) = self.board.get(SolitaireSlot::Spare(i as u8)).next() { card_style_normal.colorize(card) } else { card_style_normal },
                             });
         });
         //Flower
         buf.set_string(sx + 9, sy + 1, "| ", card_style_normal);
-        buf.set_string(sx + 11, sy + 1, if self.board.flower { "F L" } else { "   " }, card_style_flower);
+        buf.set_string(sx + 11, sy + 1, if self.board.flower() { "F L" } else { "   " }, card_style_flower);
         //Out
-        buf.set_string(sx + 14, sy + 1, format!(" |G{}|B{}|R{}|", self.board.out.bamboo, self.board.out.characters, self.board.out.coin), card_style_normal);
+        buf.set_string(sx + 14, sy + 1, format!(" |G{}|B{}|R{}|", self.board.out().bamboo, self.board.out().characters, self.board.out().coin), card_style_normal);
         //Separator
         buf.set_string(sx, sy + 2, "+--+--+--+-----+--+--+--+", card_style_normal);
         //Tray
-        let height = self.board.tray.iter().map(|x| x.len()).max().unwrap_or(0);
+        let height = (0..8).map(|x| self.board.get(SolitaireSlot::Tray(x)).count()).max().unwrap_or(0);
         for i in 0..height {
-            for (j, stack) in self.board.tray.iter().enumerate() {
+            for j in 0..8 {
+                let card = self.board.get(SolitaireSlot::Tray(j)).nth(i);
                 buf.set_string(sx + j as u16 * 3, sy + 3 + i as u16, " ", card_style_normal);
                 buf.set_string(sx + j as u16 * 3 + 1, sy + 3 + i as u16,
-                               if let Some(c) = stack.get(i) { Cow::Owned(format!("{c}")) } else { Cow::Borrowed("  ") },
-                               if let Some(card) = stack.get(i) { match state {
-                                   BoardState::SemiPickup(n) if *n == j as u8 => { card_style_semi_selected }
-                                   BoardState::Pickup(SolitaireLocation::Tray(n, m)) if *n == j as u8 && i + 2 > *m as usize => { card_style_selected }
-                                   _ => card_style_normal.colorize(*card)
+                               if let Some(c) = card { Cow::Owned(format!("{c}")) } else { Cow::Borrowed("  ") },
+                               if let Some(card) = card { match state {
+                                   BoardState::SemiPickup(n) if *n == j => { card_style_semi_selected }
+                                   BoardState::Pickup(SolitaireLocation::Tray(n, m)) if *n == j && i + 2 > *m as usize => { card_style_selected }
+                                   _ => card_style_normal.colorize(card)
                                }} else { card_style_normal })
             }
         }
@@ -163,8 +168,9 @@ fn change_board_state(board: &mut Board, state: &mut BoardState, info: &mut Opti
                 *state = BoardState::View;
             } else if let KeyCode::Char(c) = key {
                 if let Some(n) = c.to_digit(10) {
-                    if n == 0 || n as usize > board.board.len(SolitaireSlot::Tray(*index)) { return; }
-                    for i in n as usize..board.board.len(SolitaireSlot::Tray(*index)) {
+                    let index_th_stack_len = board.board.get(SolitaireSlot::Tray(*index)).count();
+                    if n == 0 || n as usize > index_th_stack_len { return; }
+                    for i in n as usize..index_th_stack_len {
                         if !board.board[SolitaireLocation::Tray(*index, i as u8)]
                             .can_stack_onto(&board.board[SolitaireLocation::Tray(*index, i as u8 - 1)]) {
                             *info = Some("Not a valid stack".into());
@@ -180,10 +186,10 @@ fn change_board_state(board: &mut Board, state: &mut BoardState, info: &mut Opti
                 *state = BoardState::View;
             } else {
                 let target_slot = if let Ok(slot) = key_to_slot(key) { slot } else { return; };
-                let source_card = board.board.get(match location {
-                    SolitaireLocation::Spare(index) => SolitaireLocation::Spare(*index),
-                    SolitaireLocation::Tray(x, y) => SolitaireLocation::Tray(*x, *y - 1),
-                }).unwrap();
+                let source_card = match location {
+                    SolitaireLocation::Spare(index) => board.board.get(SolitaireSlot::Spare(*index)).next(),
+                    SolitaireLocation::Tray(x, y) => board.board.get(SolitaireSlot::Tray(*x)).nth((*y - 1) as usize),
+                }.unwrap();
                 //Check if the move is valid
                 if !board.board.appendable(target_slot, source_card) {
                     *info = Some("Cannot stack onto that".to_string());
@@ -193,7 +199,7 @@ fn change_board_state(board: &mut Board, state: &mut BoardState, info: &mut Opti
                 let cards = match location {
                     SolitaireLocation::Spare(index) => vec![board.board.pop(SolitaireSlot::Spare(*index)).unwrap()],
                     SolitaireLocation::Tray(x, y) => {
-                        (*y as usize - 1..board.board.len(SolitaireSlot::Tray(*x)))
+                        (*y as usize - 1..board.board.get(SolitaireSlot::Tray(*x)).count())
                             .map(|_| board.board.pop(SolitaireSlot::Tray(*x)).unwrap())
                             .collect::<Vec<solitaire_base::card::Card>>().iter().rev().copied().collect()
                     }
@@ -217,7 +223,7 @@ fn draw(frame: &mut Frame, board: &Board, board_state: &mut BoardState, info: &O
     frame.render_widget(if let Some(info) = info {
         Line::from(info.clone()).on_red()
     } else {
-        let cards = solitaire_base::index::ALL_SLOTS.iter().map(|slot| board.board.len(*slot)).sum::<usize>();
+        let cards = solitaire_base::index::ALL_SLOTS.iter().map(|slot| board.board.get(*slot).count()).sum::<usize>();
         Line::from(if cards == 0 { Cow::Borrowed("Congratulations!") } else { Cow::Owned(format!("{cards}/40 cards left")) }).right_aligned().on_gray()
     }, status_line);
 }
